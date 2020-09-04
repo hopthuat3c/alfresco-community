@@ -1,0 +1,240 @@
+version: "3.3"
+
+services:
+  alfresco:
+    image: alfresco/alfresco-content-repository-community:6.2.0-ga    
+    environment:
+      JAVA_OPTS: " -Xms1500m -Xmx1500m "
+      TZ: America/Lima
+    volumes:
+      - /data-volume/alfresco/alfresco/data:/usr/local/tomcat/alf_data
+      - /data-volume/alfresco/alfresco/conf/alfresco-global.properties:/usr/local/tomcat/shared/classes/alfresco-global.properties:ro
+      - /data-volume/alfresco/alfresco/plugins/onlyoffice-integration-repo.jar:/usr/local/tomcat/webapps/alfresco/WEB-INF/lib/onlyoffice-integration-repo.jar
+    depends_on:
+      - alfresco-pdf-renderer
+      - imagemagick
+      - libreoffice
+      - tika
+      - transform-misc
+      - postgres
+      - activemq
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1500m
+    networks:
+      - alfresco_network
+#### Share service
+  share:
+    image: alfresco/alfresco-share:6.2.0
+    environment:
+      REPO_HOST: "alfresco"
+      REPO_PORT: "8080"
+      TZ: America/Lima
+      JAVA_OPTS: "
+        -Xms1024m
+        -Xmx1024m
+        -Dalfresco.host=alfresco.com
+        -Dalfresco.port=443
+        -Dalfresco.context=alfresco
+        -Dalfresco.protocol=https
+        -Dshare.host=alfresco.com
+        -Dshare.port=443
+        -Dshare.protocol=https
+        -Dshare.context=share
+        "
+      CSRF_FILTER_REFERER: "https://alfresco.com/share/.*"
+      CSRF_FILTER_ORIGIN: "https://alfresco.com"
+    volumes:
+      - /data-volume/alfresco/alfresco-share/plugins/onlyoffice-integration-share.jar:/usr/local/tomcat/webapps/share/WEB-INF/lib/onlyoffice-integration-share.jar
+    depends_on:
+      - alfresco
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1024m
+    networks:
+      - alfresco_network
+#### PDF Renderer
+  alfresco-pdf-renderer:
+    image: alfresco/alfresco-pdf-renderer:2.1.0    
+    environment:
+      JAVA_OPTS: " -Xms256m -Xmx256m"
+      TZ: America/Lima
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 256m
+    networks:
+      - alfresco_network
+
+#### imagemagick
+  imagemagick:
+    image: alfresco/alfresco-imagemagick:2.1.0    
+    environment:
+      JAVA_OPTS: " -Xms256m -Xmx512m"
+      TZ: America/Lima
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 512m
+    networks:
+      - alfresco_network
+
+### libreoffice
+  libreoffice:
+    image: alfresco/alfresco-libreoffice:2.1.0    
+    environment:
+      JAVA_OPTS: " -Xms256m -Xmx512m"
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 512m
+    networks:
+      - alfresco_network
+###### Tika services
+  tika:
+    image: alfresco/alfresco-tika:2.1.0
+    environment:
+      JAVA_OPTS: " -Xms256m -Xmx512m"
+      TZ: America/Lima
+    deploy:
+      mode: replicated
+      replicas: 3
+      resources:
+        limits:
+          memory: 512m
+    networks:
+      - alfresco_network
+### transform-misc
+  transform-misc:
+    image: alfresco/alfresco-transform-misc:2.1.0
+    environment:
+      JAVA_OPTS: " -Xms256m -Xmx512m"
+      TZ: America/Lima
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 512m
+    networks:
+      - alfresco_network
+### POSTGRES_DB
+  postgres:
+    image: alfresco/postgres:11.4    
+    environment:
+      - TZ=America/Lima
+      - POSTGRES_PASSWORD=nX9b88slqooH1FM
+      - POSTGRES_USER=alfresco
+      - POSTGRES_DB=alfresco
+    command: postgres -c max_connections=300 -c log_min_messages=LOG
+    volumes:
+      - /data-volume/alfresco/postgresql/data:/var/lib/postgresql/data
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1024m
+    networks:
+      - alfresco_network
+### Solr services
+  solr6:
+    image: alfresco/alfresco-search-services:1.4.0
+    environment:
+      #Solr needs to know how to register itself with Alfresco
+      - TZ=America/Lima
+      - SOLR_ALFRESCO_HOST=alfresco
+      - SOLR_ALFRESCO_PORT=8080
+      #Alfresco needs to know how to call solr
+      - SOLR_SOLR_HOST=solr6
+      - SOLR_SOLR_PORT=8983
+      #Create the default alfresco and archive cores
+      - SOLR_CREATE_ALFRESCO_DEFAULTS=alfresco,archive
+      #HTTP by default
+      - ALFRESCO_SECURE_COMMS=none
+      - "SOLR_JAVA_MEM=-Xms2048m -Xmx2048m"
+    volumes:
+      - /data-volume/alfresco/alfresco-search-services/data:/opt/alfresco-search-services/data
+      - /data-volume/alfresco/alfresco-search-services/keystores:/opt/alfresco-search-services/keystores
+      - /data-volume/alfresco/alfresco-search-services/solrhome:/opt/alfresco-search-services/solrhome
+    
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 2048m
+    depends_on:
+      - alfresco
+    networks:
+      - alfresco_network
+## ActiveMQ
+  activemq:
+    image: alfresco/alfresco-activemq:5.15.8
+    environment:
+      TZ: America/Lima
+    volumes:
+      - /data-volume/alfresco/activemq/conf:/opt/activemq/conf
+      - /data-volume/alfresco/activemq/data:/opt/activemq/data
+      - /data-volume/alfresco/activemq/logs:/var/log/activemq
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1024m
+    networks:
+      - alfresco_network
+
+### Only Office
+  onlyoffice:    
+    image: alfresco/onlyoffice/documentserver    
+    environment:
+      TZ: America/Lima
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1024m
+    networks:
+      - alfresco_network
+###Nginx Proxy
+  proxy:
+    image: alfresco/acs-community-nginx:1.0.0
+    environment:
+      TZ: America/Lima
+    depends_on:
+      - alfresco
+      - share
+    ports:
+      - 80:80
+      - 443:443
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 512m
+    networks:
+      - alfresco_network
+
+networks:
+  alfresco_network:
+    driver: overlay
+    attachable: true
+volumes:
+  alfresco_data:
+
